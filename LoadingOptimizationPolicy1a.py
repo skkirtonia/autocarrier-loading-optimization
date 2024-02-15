@@ -4,9 +4,10 @@ from CheckStateFeasility import check_state_feasibility
 import numpy as np
 import networkx as nx
 from itertools import permutations
+from LoadingStatesGenerator import LoadingStatesGenerator
 
 
-class LoadingOptimizationPolicy1b:
+class LoadingOptimizationPolicy1a:
     def __init__(self, route, constraints, am_types, slot_ids, verbose=False):
         """
         :param route: list of (action, automobile id), action = 1 for pickup, action = -1 for drop off for automobile id.
@@ -41,24 +42,26 @@ class LoadingOptimizationPolicy1b:
 
         start_node = tuple([0] * self.count_slots)
         self.stage_nodes_info[0] = {start_node: {"l": 0, "from": None}}
-        if not self.isFeasible:
-            return
 
+        am_loaded = set()
         for index, (action, vid) in enumerate(self.route):
             if not self.isFeasible:
                 break
             prev_labels = self.stage_nodes_info[index]
             current_labels = {}
-            for state_pre in prev_labels.keys():
-                new_state_list = []
-                if action == 1:
-                    new_state_list = set(self.get_states_adding_new_automobile_ids(state_pre, vid))
-                else:
-                    new_state_list = set(self.get_states_removing_automobile_ids(state_pre, vid))
 
-                for state_current_new in new_state_list:
-                    if check_state_feasibility(state_current_new, self.constraints, self.am_types):
-                        current_labels[state_current_new] = {"l": 1000}
+            if action == 1:
+                am_loaded.add(vid)
+            else:
+                am_loaded.remove(vid)
+            # print(am_loaded)
+            loaded_am_types = {am: self.am_types[am] for am in am_loaded}
+            generator = LoadingStatesGenerator(loaded_am_types, self.slot_ids, self.constraints)
+            new_state_list = generator.generate()
+            # print(new_state_list)
+            for state_current_new in new_state_list:
+                if check_state_feasibility(state_current_new, self.constraints, self.am_types):
+                    current_labels[state_current_new] = {"l": 1000}
 
             if len(current_labels.keys()) == 0:
                 self.isFeasible = False
@@ -66,6 +69,7 @@ class LoadingOptimizationPolicy1b:
                 if self.verbose:
                     print("Infeasible: len(current_labels.keys()) == 0")
                 break
+
             for state_prev, node_data_p in sorted(prev_labels.items(), key=lambda item: item[1]["l"]):
                 for state_current_new, node_data_c in current_labels.items():
 
@@ -141,11 +145,10 @@ class LoadingOptimizationPolicy1b:
                 "count_reloads": None,
                 "loading_plan": None,
                 "all_reloads": None,
-                "infeasibility_msg": self.infeasibility_msg,
+                "infeasibility_msg": self.infeasibility_msg
             }
 
     def draw(self, hide_links_if_all_connected=False):
-        # Ideally all nodes between two locations are connected. The links shown are the ones for which the loading costs are calculated.
         pos, node_label = self.generate_node_label_and_positions(self.stage_nodes_info)
         G = nx.DiGraph()
 
@@ -180,6 +183,7 @@ class LoadingOptimizationPolicy1b:
                                                       edge in path_edges})
         plt.tight_layout()
         plt.show()
+
         print(
             "In an ideal scenario, all nodes between two locations would be directly connected. "
             "However, loading costs are currently calculated only for the links shown on the plot.")

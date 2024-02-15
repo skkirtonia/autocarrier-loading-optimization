@@ -27,7 +27,20 @@ def get_sample_data():
     return am_types, route, slot_ids
 
 def get_sample_data2():
+    am_types = {1: "T1", 2: "T2", 3: "T1"}
+    route = [(1, 1), (1, 2), (1, 3), (-1, 1), (-1, 2), (-1, 3)]
+    slot_ids = [1, 2, 3, 4, 5]
+    return am_types, route, slot_ids
+
+def get_sample_datashort_route():
     am_types = {1: "T1", 2: "T2"}
     route = [(1, 1), (1, 2), (-1, 1), (-1, 2)]
+    slot_ids = [1, 2, 3, 4, 5]
+    return am_types, route, slot_ids
+
+def get_sample_data_infeasible():
+    # infeasible subject to the constraints
+    am_types = {1: "T3", 2: "T3", 3: "T3", 4: "T3"}
+    route = [(1, 1), (1, 2), (1, 3), (1, 4), (-1, 1), (-1, 2), (-1, 3), (-1, 4)]
     slot_ids = [1, 2, 3, 4, 5]
     return am_types, route, slot_ids

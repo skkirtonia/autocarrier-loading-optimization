@@ -6,7 +6,7 @@ import networkx as nx
 from itertools import permutations
 
 
-class LoadingOptimizationPolicy1b:
+class LoadingOptimizationPolicy1c:
     def __init__(self, route, constraints, am_types, slot_ids, verbose=False):
         """
         :param route: list of (action, automobile id), action = 1 for pickup, action = -1 for drop off for automobile id.
@@ -40,7 +40,7 @@ class LoadingOptimizationPolicy1b:
     def solve_with_labeling(self):
 
         start_node = tuple([0] * self.count_slots)
-        self.stage_nodes_info[0] = {start_node: {"l": 0, "from": None}}
+        self.stage_nodes_info[0] = {start_node: {"l": 0, "from": None, "all_from": dict()}}
         if not self.isFeasible:
             return
 
@@ -49,16 +49,40 @@ class LoadingOptimizationPolicy1b:
                 break
             prev_labels = self.stage_nodes_info[index]
             current_labels = {}
-            for state_pre in prev_labels.keys():
+            for state_prev, node_data_p in prev_labels.items():
                 new_state_list = []
                 if action == 1:
-                    new_state_list = set(self.get_states_adding_new_automobile_ids(state_pre, vid))
+                    new_state_list = set(self.get_states_adding_new_automobile_ids(state_prev, vid))
                 else:
-                    new_state_list = set(self.get_states_removing_automobile_ids(state_pre, vid))
+                    new_state_list = set(self.get_states_removing_automobile_ids(state_prev, vid))
 
                 for state_current_new in new_state_list:
                     if check_state_feasibility(state_current_new, self.constraints, self.am_types):
-                        current_labels[state_current_new] = {"l": 1000}
+                        # current_labels[state_current_new] = {"l": 1000}
+                        if state_current_new in current_labels.keys():
+                            count_reload = self.get_count_reload(state_prev, state_current_new)
+                            new_label = count_reload + node_data_p["l"]
+                            existing_old_node = current_labels[state_current_new]
+                            existing_old_node["all_from"] = {**existing_old_node["all_from"], **{state_prev:count_reload}}
+                            if new_label < existing_old_node["l"]:
+
+                                current_labels[state_current_new] = {
+                                    "l": new_label,
+                                    "from": state_prev,
+                                    "rc": count_reload,
+                                    "all_from": existing_old_node["all_from"]
+                                }
+                        else:
+                            count_reload = self.get_count_reload(state_prev, state_current_new)
+                            new_label = count_reload + node_data_p["l"]
+                            current_labels[state_current_new] = {
+                                "l": new_label,
+                                "from": state_prev,
+                                "rc": count_reload,
+                                "all_from":  {state_prev:count_reload}
+                            }
+
+
 
             if len(current_labels.keys()) == 0:
                 self.isFeasible = False
@@ -66,20 +90,7 @@ class LoadingOptimizationPolicy1b:
                 if self.verbose:
                     print("Infeasible: len(current_labels.keys()) == 0")
                 break
-            for state_prev, node_data_p in sorted(prev_labels.items(), key=lambda item: item[1]["l"]):
-                for state_current_new, node_data_c in current_labels.items():
 
-                    if node_data_p["l"] < node_data_c["l"]:
-                        count_reload = self.get_count_reload(state_prev, state_current_new)
-
-                        new_label = count_reload + node_data_p["l"]
-                        if new_label < node_data_c["l"]:
-                            current_labels[state_current_new] = {
-                                "l": new_label,
-                                "from": state_prev,
-                                "rc": count_reload}
-                        else:
-                            pass
 
             current_labels = {k: v for k, v in current_labels.items() if v["l"] < 1000}
             self.stage_nodes_info[index + 1] = current_labels
@@ -145,14 +156,17 @@ class LoadingOptimizationPolicy1b:
             }
 
     def draw(self, hide_links_if_all_connected=False):
-        # Ideally all nodes between two locations are connected. The links shown are the ones for which the loading costs are calculated.
+        # print(self.stage_nodes_info)
         pos, node_label = self.generate_node_label_and_positions(self.stage_nodes_info)
         G = nx.DiGraph()
 
         for stage, nodes in self.stage_nodes_info.items():
             if stage > 0:
                 for node, node_data in nodes.items():
-                    G.add_edge(node_data["from"], node_data["node_name"], weight=node_data["rc"])
+                    # print(node_data["all_from"])
+                    for each_from_node, cost in node_data["all_from"].items():
+                        G.add_edge(each_from_node, node_data["node_name"], weight=cost)
+                    # G.add_edge(node_data["from"], node_data["node_name"], weight=node_data["rc"])
 
         plt.figure(figsize=(20, 12))
         top_node_pos_y = max([y for x, y, in pos.values()])
@@ -171,18 +185,13 @@ class LoadingOptimizationPolicy1b:
         nx.draw_networkx_edge_labels(G, pos, alpha=0.8, edge_labels=all_edge_labels)
         nx.draw_networkx_labels(G, pos, labels=node_label)
         if self.solution_loading_plan is not None:
-            path_node_names = [str(state).replace(" ", "").replace(",", "")[1:-1] + "-" + str(i) for i, state in
-                               enumerate(self.solution_loading_plan)]
+            path_node_names = [str(state).replace(" ", "").replace(",", "")[1:-1] + "-" + str(i) for i, state in enumerate(self.solution_loading_plan)]
             path_edges = list(zip(path_node_names, path_node_names[1:]))
             nx.draw_networkx_edges(G, pos, edgelist=path_edges, width=2, arrows=False, edge_color="g")
-            nx.draw_networkx_edge_labels(G, pos, alpha=0.8, font_color="r",
-                                         edge_labels={edge: data for edge, data in all_edge_labels.items() if
-                                                      edge in path_edges})
+            nx.draw_networkx_edge_labels(G, pos, alpha=0.8, font_color="r", edge_labels={edge: data for edge, data in all_edge_labels.items() if edge in path_edges})
         plt.tight_layout()
         plt.show()
-        print(
-            "In an ideal scenario, all nodes between two locations would be directly connected. "
-            "However, loading costs are currently calculated only for the links shown on the plot.")
+        print("All links are shown with cost.")
 
     @staticmethod
     def generate_node_label_and_positions(stage_nodes):
@@ -200,7 +209,12 @@ class LoadingOptimizationPolicy1b:
                 if data["from"] is not None:
                     from_node = str(data["from"]).replace(" ", "").replace(",", "")[1:-1] + "-" + str(i - 1)
 
-                data.update({'node_name': node_name, "from": from_node})
+                new_all_from_nodes = dict()
+                for each_all_from_node, cost in data["all_from"].items():
+                    new_all_from_nodes[str(each_all_from_node).replace(" ", "").replace(",", "")[1:-1] + "-" + str(i - 1)]=cost
+
+
+                data.update({'node_name': node_name, "from": from_node, "all_from":new_all_from_nodes})
                 node_position[node_name] = pos[j]
                 node_labels[node_name] = str(node)[1:-1].replace(" ", "").replace(",", "") + f"-{data['l']}"
         return node_position, node_labels
@@ -216,16 +230,12 @@ class LoadingOptimizationPolicy1b:
 
     @staticmethod
     def get_states_removing_automobile_ids(state, vid):
-        # for single level auto-carrier
         state = list(state)
         for index in range(len(state)):
-            if state[index] == vid:
-                new_state = state[:]
+            new_state = state[:]
+            if new_state[index] == vid:
                 new_state[index] = 0
-                shuffle_items = new_state[:index + 1]
-                fixed_items = new_state[index + 1:]
-                for each_shuffle_item in permutations(shuffle_items):
-                    yield tuple(list(each_shuffle_item) + fixed_items)
+                yield tuple(new_state)
 
     @staticmethod
     def get_count_reload(f_value, t_value):
