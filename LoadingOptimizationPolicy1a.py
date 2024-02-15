@@ -186,7 +186,7 @@ class LoadingOptimizationPolicy1a:
 
         print(
             "In an ideal scenario, all nodes between two locations would be directly connected. "
-            "However, loading costs are currently calculated only for the links shown on the plot.")
+            "However, the links shown on the plot are the ones for which loading costs are calculated.")
 
     @staticmethod
     def generate_node_label_and_positions(stage_nodes):
